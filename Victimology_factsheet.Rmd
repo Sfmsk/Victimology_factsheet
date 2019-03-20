@@ -1,0 +1,436 @@
+---
+title: "Victimology_factsheet"
+author: "Sofia F. M. Schmidt-Kallesøe"
+date: "6/2/2019"
+output: html_document
+---
+
+```{r}
+
+setwd("~/Documents/Amsterdam 19/Victimology")
+
+library(haven)
+library(dplyr)
+library(data.table)
+library(foreign)
+library(ggplot2)
+library(pastecs)
+
+#JW_data <- read_sav("Just World  data.sav")
+#View(JW_data)
+
+#Creating .csv file 
+#loc1 = read.spss("~/Documents/Amsterdam 19/Victimology/Just World  data.sav", to.data.frame=TRUE)
+#write.csv(loc1, file="~/Documents/Amsterdam 19/Victimology/loc1.csv")
+
+loc = read.csv("~/Documents/Amsterdam 19/Victimology/loc1.csv")
+
+```
+
+
+Subsetting locus of control questions, victimisation experiences, and demographics 
+```{r}
+
+loc = select(loc, 2, 23:63)
+
+```
+
+Renaming variables
+```{r}
+
+colnames(loc) = c("ID", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "aa", "bb", "cc", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "Gender", "Age", "Income", "Education", "Urban_or_rural")
+
+```
+
+```{r}
+
+#Creating data frame with victimisation questions and demographics to merge with the locus of control score points data frame 
+demographics = subset(loc, select = c(ID, V3, V4, V5, V6, V7, V8, V9, Gender, Age, Income, Education, Urban_or_rural))
+
+```
+
+
+Locus of control score 
+```{r}
+
+locscoredf <- loc %>% 
+  select(b,c,d,e,f,g,i,j,k,l,m,o,p,q,r,t,u,v,w,y,z,bb,cc) %>%  #select relevant columns
+  mutate(b = if_else(b == 1, true = 1, false = 0),
+         c = if_else(c == 2, true = 1, false = 0),
+         d = if_else(d == 2, true = 1, false = 0),
+         e = if_else(e == 2, true = 1, false = 0),
+         f = if_else(f == 1, true = 1, false = 0),
+         g = if_else(g == 1, true = 1, false = 0),
+         i = if_else(i == 1, true = 1, false = 0),
+         j = if_else(j == 2, true = 1, false = 0),
+         k = if_else(k == 2, true = 1, false = 0),
+         l = if_else(l == 2, true = 1, false = 0),
+         m = if_else(m == 2, true = 1, false = 0),
+         o = if_else(o == 2, true = 1, false = 0),
+         p = if_else(p == 1, true = 1, false = 0),
+         q = if_else(q == 1, true = 1, false = 0),
+         r = if_else(r == 1, true = 1, false = 0),
+         t = if_else(t == 1, true = 1, false = 0),
+         u = if_else(u == 1, true = 1, false = 0),
+         v = if_else(v == 2, true = 1, false = 0),
+         w = if_else(w == 1, true = 1, false = 0),
+         y = if_else(y == 1, true = 1, false = 0),
+         z = if_else(z == 2, true = 1, false = 0),
+         bb = if_else(bb == 2, true = 1, false = 0),
+         cc = if_else(cc == 1, true = 1, false = 0)
+         ) %>% 
+  mutate(points = rowSums(.)) %>% #the "." if a refference to the dataframe which is being passed on by the pipe " %>% "
+  cbind(select(loc, ID)) #binds the passed df with the id columns from the testdf
+
+#Fixing the order of the columns
+locscoredf <- locscoredf %>% select(ID, points, everything())
+
+#Bind demographics+victimisation questions df and locscoredf together
+locdf = merge(locscoredf, demographics, by = c("ID"))
+
+
+```
+
+Changing all answers that are not no or yes to NA (to conduct t-tests, which requires a factor with only two levels)
+```{r}
+
+locdf[locdf=="Do not want to tell"] <- NA
+locdf[locdf=="Do not know"] <- NA
+
+```
+
+
+Creating a column for the added points for each participant
+```{r}
+
+#dataframe = within(locdf, {
+#    loc = ifelse(points < "12"| points > "12", 1, 2)
+# })
+
+locdf$loc = if_else(locdf$points < 13, true = 1, false = 2)
+
+```
+
+Checking for normality before conducting tests 
+```{r}
+
+ggplot(locdf, aes(points)) + 
+  geom_histogram(aes(y=..density..), colour = "darkblue", fill = "lightblue", binwidth = 3) + 
+  stat_function(fun = dnorm, args = list(mean(locdf$points), sd(locdf$points)), size = 1) + 
+  labs(x = "Points", y = "Density") + 
+  ggtitle("Points") +
+  theme_minimal()
+
+qplot(sample = locdf$points)
+
+round(stat.desc(locdf$points, basic = FALSE, norm = TRUE),4)
+
+```
+
+
+V3 variable - Have you ever been a victim of an offence?
+```{r}
+
+#Boxplot of the two groups (excluding NAs)
+ggplot(subset(locdf, !is.na(V3)), aes(x=V3, y=points)) + 
+  geom_boxplot(width = 0.3, fill = "cornflowerblue") +
+  labs(y = "Locus of Control score", x = "Have you ever been victimised?") +
+  theme_minimal()
+
+#Descriptive statistics
+by(locdf$points, locdf$V3, stat.desc, basic = FALSE, norm = TRUE)
+
+
+#Independent t-test 
+V3.ttest = t.test(points ~ V3, data = locdf)
+V3.ttest
+
+
+#Calculating effect size 
+t = V3.ttest$statistic[[1]] #Creating a variable t that contains the value of t 
+
+df = V3.ttest$parameter[[1]] #Creating a variable df containing the degrees of freedom
+
+r = sqrt(t^2/(t^2+df)) #Calculating r 
+round(r, 3)
+
+```
+
+On average, participants had a higher LOC score when having been victimised (M = 16.3, SE = .42), than when not having been victimised (M = 12.96, SE = 0.39). This difference was significant t(119.34) = 5.86, p < .01 and had an effect of r = .47. 
+
+
+
+V4 variable - Have you been a victim of a violent offence in the past year?
+```{r}
+
+#Boxplot of the two groups (excluding NAs)
+ggplot(subset(locdf, !is.na(V4)), aes(x=V4, y=points)) + 
+  geom_boxplot(width = 0.1) +
+  labs(x = "Locus of Control score", y = "V4. Have you been a victim of a violent offence in the past year?") +
+  theme_minimal()
+
+
+#Descriptive statistics
+by(locdf$points, locdf$V4, stat.desc, basic = FALSE, norm = TRUE)
+
+
+#Independent t-test 
+V4.ttest = t.test(points ~ V4, data = locdf)
+V4.ttest
+
+
+#Calculating effect size 
+t = V4.ttest$statistic[[1]] #Creating a variable t that contains the value of t 
+
+df = V4.ttest$parameter[[1]] #Creating a variable df containing the degrees of freedom
+
+r = sqrt(t^2/(t^2+df)) #Calculating r 
+round(r, 3) 
+
+```
+
+On average, participants had a higher LOC score when having been victimised within the last year (M = 16.06, SE = .61), than when not having been victimised (M = 13.59, SE = 0.34). This difference was significant t(27.2) = 3.54, p < .01 and had an effect of r = .56. 
+
+
+
+V5 variable - Have you been a victim of a sexual offence in the past year?
+```{r}
+
+#Boxplot of the two groups (excluding NAs)
+ggplot(subset(locdf, !is.na(V5)), aes(x=V5, y=points)) + 
+  geom_boxplot(width = 0.3, fill = "cornflowerblue") +
+  labs(y = "Locus of Control score", x = "Sexual offense - Past year") +
+  theme_minimal()
+
+#Descriptive statistics
+by(locdf$points, locdf$V5, stat.desc, basic = FALSE, norm = TRUE)
+
+
+#Independent t-test 
+V5.ttest = t.test(points ~ V5, data = locdf)
+V5.ttest
+
+
+#Calculating effect size 
+t = V5.ttest$statistic[[1]] #Creating a variable t that contains the value of t 
+
+df = V5.ttest$parameter[[1]] #Creating a variable df containing the degrees of freedom
+
+r = sqrt(t^2/(t^2+df)) #Calculating r 
+round(r, 3) 
+
+```
+
+On average, participants had a higher LOC score when having been sexually assaulted within the last year (M = 19.71, SE = .42), than when they hadn't (M = 14, SE = 0.31). This difference was significant t(13.84) = 10.99, p < .01 and had an effect of r = .95. 
+
+
+
+
+V6 variable - Have you been a victim of a theft in the past year?
+```{r}
+
+#Boxplot of the two groups (excluding NAs)
+ggplot(subset(locdf, !is.na(V6)), aes(x=V6, y=points)) + 
+  geom_boxplot() +
+  labs(x = "Locus of Control score", y = "V6. Have you been a victim of a theft in the past year?") +
+  theme_minimal()
+
+#Descriptive statistics
+by(locdf$points, locdf$V6, stat.desc, basic = FALSE, norm = TRUE)
+
+
+#Independent t-test 
+V6.ttest = t.test(points ~ V6, data = locdf)
+V6.ttest
+
+
+#Calculating effect size 
+t = V6.ttest$statistic[[1]] #Creating a variable t that contains the value of t 
+
+df = V6.ttest$parameter[[1]] #Creating a variable df containing the degrees of freedom
+
+r = sqrt(t^2/(t^2+df)) #Calculating r 
+round(r, 3) 
+
+```
+
+On average, participants had a higher LOC score when having been a victim of theft within the last year (M = 16.5, SE = .48), than when they hadn't (M = 13.26, SE = 0.35). This difference was significant t(58.94) = 5.43, p < .01 and had an effect of r = .58. 
+
+
+
+
+V7 variable - Have you been a victim of a robbery in the past year?
+```{r}
+
+#Boxplot of the two groups (excluding NAs)
+ggplot(subset(locdf, !is.na(V7)), aes(x=V7, y=points)) + 
+  geom_boxplot() +
+  labs(x = "Locus of Control score", y = "V7. Have you been a victim of a robbery in the past year?") +
+  theme_minimal()
+
+#Descriptive statistics
+by(locdf$points, locdf$V7, stat.desc, basic = FALSE, norm = TRUE)
+
+
+#Independent t-test 
+V7.ttest = t.test(points ~ V7, data = locdf)
+V7.ttest
+
+
+#Calculating effect size 
+t = V7.ttest$statistic[[1]] #Creating a variable t that contains the value of t 
+
+df = V7.ttest$parameter[[1]] #Creating a variable df containing the degrees of freedom
+
+r = sqrt(t^2/(t^2+df)) #Calculating r 
+round(r, 3) 
+
+```
+
+On average, participants had a higher LOC score when having been a victim of robbery within the last year (M = 16.33, SE = .80), than when they hadn't (M = 13.53, SE = 0.33). This difference was significant t(23.17) = 3.22, p < .01 and had an effect of r = .56. 
+
+
+V8 variable - Have you been a victim of vandalism in  the past year?
+```{r}
+
+#Boxplot of the two groups (excluding NAs)
+ggplot(subset(locdf, !is.na(V8)), aes(x=V8, y=points)) + 
+  geom_boxplot(width = 0.3, fill = "cornflowerblue") +
+  labs(y = "Locus of Control score", x = "Vandalism - past year") +
+  theme_minimal()
+
+#Descriptive statistics
+by(locdf$points, locdf$V8, stat.desc, basic = FALSE, norm = TRUE)
+
+
+#Independent t-test 
+V8.ttest = t.test(points ~ V8, data = locdf)
+V8.ttest
+
+
+#Calculating effect size 
+t = V8.ttest$statistic[[1]] #Creating a variable t that contains the value of t 
+
+df = V8.ttest$parameter[[1]] #Creating a variable df containing the degrees of freedom
+
+r = sqrt(t^2/(t^2+df)) #Calculating r 
+round(r, 3) 
+
+```
+
+On average, participants had a higher LOC score when having been a victim of vandalism within the last year (M = 18, SE = 1.56), than when they hadn't (M = 13.49, SE = 0.33). This difference was significant t(7.62) = 2.83, p < .05 and had an effect of r = .72. 
+
+
+
+V9 variable - To your knowledge has anyone of your close friends and/or family been a victim of an offence in the past year? 
+```{r}
+
+#Boxplot of the two groups (excluding NAs)
+ggplot(subset(locdf, !is.na(V9)), aes(x=V9, y=points)) + 
+  geom_boxplot() +
+  labs(x = "Locus of Control score", y = "V9. To your knowledge has anyone of your close friends 
+       and/or family been a victim of an offence in the past year?") +
+  theme_minimal()
+
+#Descriptive statistics
+by(locdf$points, locdf$V9, stat.desc, basic = FALSE, norm = TRUE)
+
+
+#Independent t-test 
+V9.ttest = t.test(points ~ V9, data = locdf)
+V9.ttest
+
+
+#Calculating effect size 
+t = V9.ttest$statistic[[1]] #Creating a variable t that contains the value of t 
+
+df = V9.ttest$parameter[[1]] #Creating a variable df containing the degrees of freedom
+
+r = sqrt(t^2/(t^2+df)) #Calculating r 
+round(r, 3) 
+
+```
+
+On average, participants had a higher LOC score when having been a victim of theft within the last year (M = 14.24, SE = .41), than when they hadn't (M = 13.18, SE = 0.52). This difference was not significant t(111.11) = 1.6, p = 0.11 and only had a small effect of r = .15. 
+
+
+
+More descriptive statistics 
+```{r}
+
+#Percentage of male victims 
+mv = subset(locdf, Gender == "male")
+summary(mv)
+#Yes=21, no=20, NA=9
+
+21/41*100 
+#51.22% of male participants have been victimised
+
+
+#Percentage of female victims 
+fv = subset(locdf, Gender == "female")
+summary(fv)
+#Yes=29, no=65, NA=6
+
+29/94*100
+#30.85% of female participants have been victimised 
+
+
+#Percentage of victims 
+summary(locdf)
+50/135*100
+#37.04% of participants have been victimised 
+
+
+#Percentage of victims with an internal LoC
+iv = subset(locdf, loc == "1")
+summary(iv)
+#Yes=5, no=37, NA=8
+
+5/42*100
+#11.9% of participants with an internal locus of control have been victimised
+
+
+#Percentage of victims with an external LoC 
+ev = subset(locdf, loc == "2")
+summary(ev)
+#Yes=45, no=48, NA=7
+
+45/93*100
+#48.39% of participants with an external locus of control have been victimised
+
+```
+
+
+Gender differences in victimisation
+```{r}
+
+#Seeing whether gender predicts victimisation
+locdf$Gender<-relevel(locdf$Gender, "female")
+locdf$V3<-factor(locdf$V3, levels = c("no", "Yes"))
+as.numeric(locdf$Gender)
+
+gv_model = glm(V3 ~ Gender, data = locdf, family = binomial())
+summary(gv_model)
+
+#Gender was a significant predictor of being victimised, b = .86, z = 2.23, p < .05. Males are more likely to victimised than females. 
+
+
+#Testing model significance
+modelChi <- gv_model$null.deviance - gv_model$deviance
+modelChi
+
+chidf <- gv_model$df.null - gv_model$df.residual
+
+chisq.prob <- 1 - pchisq(modelChi, chidf)
+chisq.prob
+
+#The p-value is 0.03, and is thus significant meaning we can reject the null hypothesis that the model is not better at predicting than chance. 
+
+#Finding odds ratio and CI
+exp(gv_model$coefficients)
+
+exp(confint(gv_model))
+
+```
+
